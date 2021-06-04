@@ -27,23 +27,22 @@ def reader(wb, port, sensor_count, should_stop):
             try:
                 line = ser.readline()
                 if should_stop():
-                    print()
                     break
                 if len(line) == 0 or not line.startswith(PREFIX):
                     continue
             except Exception as e:
-                print('\nОшибка чтения, запись закончена:', e)
+                print('Ошибка чтения, запись закончена:', e)
                 break
 
             try:
                 line = line.strip().replace(PREFIX, b'').decode('utf-8')
                 values = line.split('/')
-                print(f'Последние значения: {", ".join(values):{sensor_count*8}}', end='\r')
+                print(f'Получено: {", ".join(values):{sensor_count*8}}')
                 sys.stdout.flush()
                 values = [int(v) for v in values[:sensor_count]]
                 ws.append([datetime.now()] + values)
             except Exception as e:
-                print('\nОшибка обработки:', e)
+                print('Ошибка обработки:', e)
 
 
 def menu():
