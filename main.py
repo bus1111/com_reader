@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import serial
 from serial.tools import list_ports
 from datetime import datetime
@@ -20,18 +21,27 @@ def create_workbook(sensor_count):
     return wb
 
 
-def reader(wb, port, sensor_count, should_stop):
+def reader(wb, port, sensor_count, filename, should_reset, should_stop):
     ws = wb.active
-    with serial.Serial(port.device, 115200, timeout=0.25) as ser:
+    last_save = 0
+    with serial.Serial(baudrate=115200, timeout=0.2) as ser:
+        ser.port = port.device
+        if sys.platform != 'win32':
+            # Особенности Windows драйвера
+            should_reset = not should_reset
+        if not should_reset:
+            ser.rts = False
+            ser.dtr = False
+        ser.open()
         while True:
             try:
                 line = ser.readline()
-                if should_stop():
+                if should_stop() or not ser.is_open:
                     break
                 if len(line) == 0 or not line.startswith(PREFIX):
                     continue
             except Exception as e:
-                print('Ошибка чтения, запись закончена:', e)
+                print('Ошибка чтения, нажмите Enter:', e)
                 break
 
             try:
@@ -41,6 +51,9 @@ def reader(wb, port, sensor_count, should_stop):
                 sys.stdout.flush()
                 values = [int(v) for v in values[:sensor_count]]
                 ws.append([datetime.now()] + values)
+                if time.time() - last_save > 10:
+                    wb.save(filename)
+                    last_save = time.time()
             except Exception as e:
                 print('Ошибка обработки:', e)
 
@@ -80,21 +93,24 @@ def menu():
         except Exception:
             print('Неверный ввод')
             continue
+    should_reset = input(f'Cбросить устройство перед началом (да/нет) [нет]: ').lower()
+    should_reset = should_reset.startswith('д') or should_reset.startswith('y')
 
-    return ports[selected_port - 1], sensor_count
+    return ports[selected_port - 1], sensor_count, should_reset
 
 
 if __name__ == '__main__':
     while True:
-        port, sensor_count = menu()
+        port, sensor_count, should_reset = menu()
         wb = create_workbook(sensor_count)
         stop_signal = False
-        t = Thread(target=reader, args=(wb, port, sensor_count, lambda: stop_signal))
+        filename = f'{datetime.strftime(datetime.now(), "Сенсоры %d %b %Y %H-%M-%S.xlsx")}'
+        t = Thread(target=reader, args=(wb, port, sensor_count, filename, should_reset, lambda: stop_signal))
         t.start()
         input('Запись начата, нажмите Enter чтобы остановить\n')
         stop_signal = True
+        print('Запись останавливается...')
         t.join(timeout=5)
-        filename = f'{datetime.strftime(datetime.now(), "Сенсоры %d %b %Y %H-%M-%S.xlsx")}'
         wb.save(filename)
         print(f'Запись сохранена в файл {os.path.abspath(filename)}')
         input('Нажмите Enter чтобы начать новую запись')
